@@ -1,0 +1,213 @@
+= Function Setup
+:author: Anthony Ikeda <anthony.ikeda@gmail.com>
+:version: 0.0.1
+:toc: right
+
+== Architecture
+
+* 1 ZooKeeper Server
+* 3 Book Keeper Bookies
+* 3 Pulsar Brokers
+
+== Configre Systems
+
+=== Configure Zookeeper
+
+[source,properties,numbered]
+----
+# The number of milliseconds of each tick
+tickTime=2000
+
+# The number of ticks that the initial
+# synchronization phase can take
+initLimit=10
+
+# The number of ticks that can pass between
+# sending a request and getting an acknowledgement
+syncLimit=5
+
+# the directory where the snapshot is stored.
+# do not use /tmp for storage, /tmp here is just
+# example sakes.
+dataDir=/tmp/Datastores/zookeeper
+
+# the port at which the clients will connect
+clientPort=2181
+
+----
+
+=== Configure Book Keeper
+
+Create copies of conf/bk_server.conf:
+
+* `bk_server_01.conf`
+* `bk_server_02.conf`
+* `bk_server_03.conf`
+
+Properties that we change include:
+
+[cols="2,1"]
+|===
+
+| *Property*
+| *Value*
+
+| `bookieId`
+| `bookie-001`
+
+| `extraServerComponents`
+| `org.apache.bookkeeper.stream.server.StreamStorageLifecycleComponent`
+
+| `ignoreExtraServerComponentsStartupFailures`
+| `false`
+
+| `journalDirectories`
+| `/tmp/bookkeeper/bk-txn-01[02,03]` # configure for the broker
+
+| `ledgerDirectories`
+| `/tmp/bookkeeper/bk-data-01[02,03]` # configure for the broker
+
+| `metadataServiceUri`
+| `zk+hierarchical://localhost:2181/ledgers`
+
+| `zkServers`
+| `localhost:2181`
+
+| `storageserver.grpc.port`
+| `4181`
+
+| `dlog.bkcEnsembleSize`
+| `3`
+
+| `dlog.bkcWriteQuorumSize`
+| `2`
+
+| `dlog.bkcAckQuorumSize`
+| `2`
+
+| `storage.range.store.dirs`
+| `data/bookkeeper/ranges-01[02,03]` # configure for the broker
+
+|===
+
+=== Configure Pulsar
+
+Create 3 instances of the `broker.conf`:
+* `conf/broker_01.conf`
+* `conf/broker_02.conf`
+* `conf/broker_03.conf`
+
+
+== Start the Stack
+
+=== ZooKeeper
+
+----
+$ bin/zkServer.sh start
+----
+
+=== Book Keeper Bookies
+
+[source,bash]
+----
+# Set the bookie config - done for each bookie
+$ export BOOKIE_CONF={BOOKKEEPER_HOME}/conf/bk_server_01.conf
+
+# Initialize the cluster - done once
+$ bin/bkctl cluster init -n 3 zk://localhost:2181/ledgers
+
+# format the metadata - done once
+$ bin/bookkeeper shell metaformat
+
+# Format the bookie data space - done for each bookie
+$ bin/bookkeeper shell bookieformat
+
+# start the bookie
+$ bin/bookkeeper bookie
+
+----
+
+=== Pulsar Brokers
+
+----
+
+$ export PULSAR_BROKER_CONF={PULSAR_HOME}/conf/broker_01[02,03].conf
+
+$ bin/pulsar broker
+----
+
+== Getting the function working
+
+=== Create the namespace
+
+----
+$ bin/pulsar-admin tenants create test
+$ bin/pulsar-admin namespaces create test/test-namespace
+----
+
+=== Install the Function
+
+----
+$ bin/pulsar-admin functions create --function-config-file basic-function.yaml --jar basic-function-0.0.1-SNAPSHOT.nar
+Created successfully
+
+$ bin/pulsar-admin functions status --tenant test --namespace test-namespace --name string-to-string
+{
+  "numInstances" : 1,
+  "numRunning" : 1,
+  "instances" : [ {
+    "instanceId" : 0,
+    "status" : {
+      "running" : true,
+      "error" : "",
+      "numRestarts" : 0,
+      "numReceived" : 0,
+      "numSuccessfullyProcessed" : 0,
+      "numUserExceptions" : 0,
+      "latestUserExceptions" : [ ],
+      "numSystemExceptions" : 0,
+      "latestSystemExceptions" : [ ],
+      "averageLatency" : 0.0,
+      "lastInvocationTime" : 0,
+      "workerId" : "c-localCluster-fw-192.168.0.57-7070"
+    }
+  } ]
+}
+----
+
+=== Publish some messages
+
+----
+$ bin/pulsar-client produce -m "test-messages-`date`" -n 10 persistent://test/test-namespace/test_topic
+...
+INFO  org.apache.pulsar.client.cli.PulsarClientTool - 10 messages successfully produced
+...
+----
+
+=== Consume the transformed messages
+
+----
+$ bin/pulsar-client consume -s test-sub -n 0 persistent://test/test-namespace/string_result
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQEjAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:56:34 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQEzAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:56:34 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQFDAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQFTAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQFjAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQFzAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQGDAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQGTAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQGjAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQGzAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
+----- got message -----
+key:[null], properties:[__pfn_input_msg_id__=CBEQHDAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
+----

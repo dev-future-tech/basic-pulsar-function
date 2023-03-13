@@ -1,0 +1,3 @@
+name: string-to-string-function
+description: simple little thing
+functionClass: com.example.pulsar.StringToStringFunction

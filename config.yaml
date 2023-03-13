@@ -1,0 +1,10 @@
+tenant: "test"
+namespace: "test-namespace"
+name: "string-to-string"
+className: "com.example.pulsar.StringToStringFunction"
+inputs: ["persistent://test/test-namespace/test_topic"]
+userConfig:
+  "PublishTopic": "string_result"
+output: "persistent://test/test-namespace/string_result"
+autoAck: true
+parallelism: 1
