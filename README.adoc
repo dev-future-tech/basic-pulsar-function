@@ -243,4 +243,80 @@ We will start with the following:
 * A database to connect the Debezium Source Connector to
 * A destination topic for re-routed messages
 
+==== Setup the Database
 
+There are some PostgreSQL configuration changes we first need to make:
+
+postgresql.conf
+
+----
+...
+wal_level = logical
+...
+----
+
+Then restart PostgreSQL.
+
+==== Create the tables
+
+Basic database, 2 tables: `person` and `company`:
+
+[source,sql,numbered]
+----
+create role dbuser with superuser login password 'letmein';
+
+create database company_database_orig with owner dbuser;
+
+create table person (
+    id int primary key generated always as identity not null,
+    first_name varchar(50) not null,
+    last_name varchar(50),
+    email varchar(120)
+);
+
+create table company (
+    id int primary key generated always as identity not null,
+    name varchar(50) not null,
+    department varchar(50)
+);
+
+----
+
+==== Set up the Debezium Source Connector
+
+1. Download the `pulsar-io-debezium-postgres-2.11.0.nar` file and move it to `{PULSAR_HOME}/connectors`
+2. Create the Debezium config:
++
+.postgres-connector.yaml
+[source,yaml]
+----
+tenant: "my-tenant"
+namespace: "my-namespace"
+topicName: "company-data"
+name: "company-source"
+archive: "connectors/pulsar-io-debezium-postgres-2.11.0.nar"
+parallelism: 1
+inputs: [ "company-data" ]
+
+
+configs:
+  connector.class: "io.debezium.connector.postgresql.PostgresConnector"
+  database.hostname: "localhost"
+  database.port: "5432"
+  database.user: "dbuser"
+  database.password: "letmein"
+  database.server.name: "dbserver1"
+  database.dbname: "company_database_orig"
+  table.include.list: "public.company,public.person"
+  database.history: "org.apache.pulsar.io.debezium.PulsarDatabaseHistory"
+  database.history.pulsar.topic: "history-topic"
+  pulsar.service.url: "pulsar://127.0.0.1:6650"
+  plugin.name: "pgoutput"
+----
+
+3. Deploy the connector, owever stop the connector
++
+[source,bash]
+----
+$ bin/pulsar-admin sources create --source-config-file postgres.yaml
+----
