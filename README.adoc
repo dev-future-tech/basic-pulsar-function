@@ -211,3 +211,36 @@ key:[null], properties:[__pfn_input_msg_id__=CBEQGzAA, __pfn_input_topic__=persi
 ----- got message -----
 key:[null], properties:[__pfn_input_msg_id__=CBEQHDAA, __pfn_input_topic__=persistent://test/test-namespace/test_topic], content:Received: test-messages-Sun Mar 12 19:57:04 PDT 2023
 ----
+
+== Connectors and Functions
+
+=== Overview
+
+Pulsar doesn't support SMTs (Simple Message Transforms) like Kafka, if you try and configure the transform on, for example, the Debezium PostreSQL Source:
+
+[source,yaml,numbered]
+----
+configs:
+  transforms.Reroute.type: "io.debezium.transforms.ByLogicalTableRouter"
+  transforms.Reroute.topic.regex: "(.*)person(.*)"
+  transforms.Reroute.topic.replacement: "$1person_transform"
+----
+
+You'll find nothing actually happens. What **should** happen is:
+
+* The `ByLogicalTableRouter` should be instantiated
+* A regex pattern matched should scan the topics for a name that matches `\*.person*.`, for example `dbserver.mydb.person`
+* All messages from that topic then get routed to the topic: `dbserver.mydb.person_transform`
+
+To create a way to mitigate this shortcoming, we are going to use Functions with the Connector.
+
+=== Prerequisites
+
+We will start with the following:
+
+* Debezium PostgreSQL Source Connector
+* A customer function to apply to the topics that the connector creates
+* A database to connect the Debezium Source Connector to
+* A destination topic for re-routed messages
+
+
